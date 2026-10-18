@@ -1,23 +1,27 @@
 {
-  "name": "ujian-daring-dkv-xi",
+  "name": "ujian-daring-supabase",
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Ujian Daring DKV XI — porting dari Google Apps Script ke Vercel",
+  "description": "Ujian Daring — Supabase Database/Storage dan Vercel",
   "engines": {
-    "node": ">=20"
+    "node": "24.x"
   },
   "dependencies": {
-    "googleapis": "^144.0.0",
+    "@supabase/supabase-js": "2.118.0",
     "jsqr": "^1.4.0",
     "qrcode": "^1.5.4",
     "xlsx": "^0.18.5"
   },
   "scripts": {
     "test": "node --test",
-    "hash-admin": "node scripts/hash-secret.mjs",
-    "setup-sheet": "node scripts/setup-sheet.mjs",
-    "generate-pins": "node scripts/generate-pins.mjs",
-    "import-questions": "node scripts/question-import.mjs"
+    "hash-admin": "node --env-file=.env.local scripts/hash-secret.mjs",
+    "check-supabase": "node --env-file=.env.local scripts/check-supabase.mjs",
+    "create-exam": "node --env-file=.env.local scripts/create-exam.mjs",
+    "generate-pins": "node --env-file=.env.local scripts/generate-pins.mjs",
+    "import-questions": "node --env-file=.env.local scripts/question-import.mjs"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.5.10"
   }
 }

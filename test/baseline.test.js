@@ -4,8 +4,8 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-process.env.HASH_SECRET = 'baseline-test-hash-secret';
-process.env.SESSION_SECRET = 'baseline-test-session-secret';
+process.env.APP_HASH_SECRET = 'baseline-test-hash-secret';
+process.env.APP_SESSION_SECRET = 'baseline-test-session-secret';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 

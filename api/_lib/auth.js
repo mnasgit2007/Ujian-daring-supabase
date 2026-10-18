@@ -9,12 +9,10 @@ export function isYa(v) {
   return norm(v).toUpperCase() === 'YA';
 }
 
-// Setara hash_() di Code.gs: sha256(secret + '|' + text). HASH_SECRET dibuat
-// bebas — proyek ini belum pernah dipasang di akun Google (lihat PANDUAN_INSTALASI.md),
-// jadi tidak ada PIN lama yang perlu tetap kompatibel.
+// Preserve the original SHA-256 credential format with a separate project secret.
 export function hash(text) {
-  const secret = process.env.HASH_SECRET;
-  if (!secret) throw new Error('HASH_SECRET belum diatur di Environment Variables Vercel.');
+  const secret = process.env.APP_HASH_SECRET;
+  if (!secret) throw new Error('APP_HASH_SECRET belum diatur di Environment Variables Vercel.');
   return crypto.createHash('sha256').update(secret + '|' + text, 'utf8').digest('hex');
 }
 
@@ -27,12 +25,12 @@ export function hashAdmin(password) {
 }
 
 function secret() {
-  const s = process.env.SESSION_SECRET;
-  if (!s) throw new Error('SESSION_SECRET belum diatur di Environment Variables Vercel.');
+  const s = process.env.APP_SESSION_SECRET;
+  if (!s) throw new Error('APP_SESSION_SECRET belum diatur di Environment Variables Vercel.');
   return s;
 }
 
-export const SESSION_SECONDS = Math.max(900, Math.min(Number(process.env.SESSION_TTL_SECONDS || 21600), 21600));
+export const SESSION_SECONDS = Math.max(900, Math.min(Number(process.env.APP_SESSION_TTL_SECONDS || 21600), 21600));
 
 // --- primitif tanda tangan bersama (dipakai token sesi dan tiket sesi ujian) ---
 

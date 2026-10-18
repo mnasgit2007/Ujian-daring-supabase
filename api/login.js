@@ -50,8 +50,8 @@ async function loginAdmin(body) {
   await preload([SHEETS.LOGIN_LIMIT, SHEETS.UJIAN, SHEETS.SISWA, SHEETS.SESI]);
   const throttle = await checkThrottle('ADMIN');
 
-  const expected = norm(process.env.ADMIN_HASH);
-  if (!expected) throw new Error('ADMIN_HASH belum diatur di Environment Variables Vercel.');
+  const expected = norm(process.env.APP_ADMIN_HASH);
+  if (!expected) throw new Error('APP_ADMIN_HASH belum diatur di Environment Variables Vercel.');
   if (!password || hashAdmin(password) !== expected) {
     await recordFailure('ADMIN', throttle);
     throw new Error('Kata sandi admin salah.');

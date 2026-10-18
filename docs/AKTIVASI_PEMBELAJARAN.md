@@ -1,5 +1,7 @@
 # Aktivasi kehadiran, materi, tugas, dan profil
 
+> ARSIP VERSI GOOGLE. Jangan menjalankan langkah di bawah untuk branch Supabase. Gunakan [panduan Supabase + Vercel](AKTIVASI_SUPABASE_VERCEL.md); panduan lama disimpan hanya sebagai riwayat.
+
 Fitur dasar ini berasal dari PR #26 yang sudah di-merge. Pengujian otomatis memakai database dan Drive tiruan; koneksi Google produksi harus diuji setelah konfigurasi. Untuk pembaruan dashboard, peserta ujian, foto profil, dan jadwal mengajar, ikuti [panduan aktivasi dashboard dan jadwal](AKTIVASI_DASHBOARD_JADWAL.md).
 
 ## 1. Perbarui branch lokal dan siapkan Google Sheets

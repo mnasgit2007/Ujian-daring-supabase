@@ -65,7 +65,7 @@ export function createAcademicService(db=store) {
     if(p.id&&!rows(await read('GURU')).some(r=>r[0]===p.id&&r[3]==='YA'))throw new Error('Akun guru tidak aktif.');
   }
   async function ready(){
-    if(!(await optionalAcademicRows(db,'JADWAL'))||!(await optionalAcademicRows(db,'PESERTA_UJIAN'))||!(await optionalAcademicRows(db,'JADWAL_PENGECUALIAN')))throw new Error('Jalankan setup-sheet.mjs untuk mengaktifkan jadwal dan peserta ujian.');
+    if(!(await optionalAcademicRows(db,'JADWAL'))||!(await optionalAcademicRows(db,'PESERTA_UJIAN'))||!(await optionalAcademicRows(db,'JADWAL_PENGECUALIAN')))throw new Error('Konfigurasi database jadwal dan peserta ujian belum lengkap.');
   }
   async function saveRoster(p,input){
     await admin(p);await ready();

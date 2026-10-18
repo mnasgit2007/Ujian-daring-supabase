@@ -71,7 +71,7 @@ export function createLearningService(db = store, files = assignmentFiles) {
   const table = async s => rowsOnly(await read(s));
   async function setup() {
     try { await db.preload(NEW_SHEETS); }
-    catch (e) { if (String(e.message).includes('range') || [400,404].includes(Number(e.code || e.status))) throw new Error('Fitur pembelajaran belum diaktifkan. Admin perlu menjalankan node --env-file=.env scripts/setup-sheet.mjs.'); throw e; }
+    catch (e) { if (String(e.message).includes('range') || [400,404].includes(Number(e.code || e.status))) throw new Error('Konfigurasi database pembelajaran belum lengkap.'); throw e; }
   }
   async function principal(p) {
     if (!['S','A'].includes(p.role)) throw new Error('Akses ditolak.');
@@ -152,7 +152,7 @@ export function createLearningService(db = store, files = assignmentFiles) {
   }
   async function savePhoto(p,input) {
     await setup();await principal(p);
-    if(!await optionalAcademicRows(db,'FOTO_PROFIL'))throw new Error('Jalankan setup-sheet.mjs untuk mengaktifkan foto profil.');
+    if(!await optionalAcademicRows(db,'FOTO_PROFIL'))throw new Error('Konfigurasi database foto profil belum lengkap.');
     const photo=String(input.photo||'');
     if(photo) {
       if(!/^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/.test(photo)||photo.length>32000)throw new Error('Foto harus JPEG, maksimal 24 KB.');
@@ -177,9 +177,9 @@ export function createLearningService(db = store, files = assignmentFiles) {
       for(const file of validated)uploaded.push(await files.put(file,id));
     } catch(e) {
       await Promise.allSettled(uploaded.map(f=>files.remove(f.id)));
-      throw new Error('Unggahan belum berhasil. Periksa akses Drive atau coba lagi.');
+      throw new Error('Unggahan belum berhasil. Periksa akses penyimpanan atau coba lagi.');
     }
-    // Keep uploads if the Sheets response is uncertain: never delete files which may already be referenced.
+    // Keep uploads if the database response is uncertain: files may already be referenced.
     await db.appendRows('PENGUMPULAN',[[id,task.id,p.id,student[1],note,JSON.stringify(uploaded),now,now>task.due?'YA':'TIDAK','','','','',requestId]]);
     return {ok:true,id};
   }

@@ -4,12 +4,13 @@ import { captureAttendanceRoster } from './learning.js';
 import { eligibleForExam, latestRosters, optionalAcademicRows } from './academic.js';
 import * as academicStore from './store.js';
 import { SHEETS, readRows, appendRows, writeCells, writeRanges, clearCells, preload, cellToEpoch, fmtEpoch, nowMs } from './store.js';
+import { validateImagePath } from './storage.js';
 import { norm, isYa, hashSiswa, signAttemptTicket, readAttemptTicket } from './auth.js';
 
 export const MAX_SOAL = 80;
 export const MAX_JAWAB_BYTES = 30000;
 export const MAX_GAMBAR = 220000;
-export const RANDOMIZE_QUESTIONS = isYa(process.env.SHUFFLE_QUESTIONS);
+export const RANDOMIZE_QUESTIONS = isYa(process.env.APP_SHUFFLE_QUESTIONS);
 
 // Pengacakan ditentukan dari AttemptID, bukan Math.random(), sehingga urutan
 // tetap sama saat siswa memuat ulang atau melanjutkan sesi yang sama.
@@ -87,6 +88,7 @@ export function normalizeQuestionInput(input = {}) {
   if (!Number.isFinite(weight) || weight <= 0 || weight > 1000) throw new Error('Bobot harus lebih besar dari 0 dan maksimal 1000.');
   const fileId = norm(input.fileId);
   if (fileId.length > 200) throw new Error('ID gambar terlalu panjang.');
+  if (fileId) validateImagePath(fileId);
   return {
     examId: norm(input.examId), id,
     text: questionText(input.text, 'Pertanyaan'),
@@ -364,7 +366,7 @@ async function ensureClassHistorySheet() {
   } catch (e) {
     const status = Number(e?.code || e?.status || e?.response?.status);
     if ([400, 404].includes(status)) {
-      throw new Error('Tab RIWAYAT_KELAS belum tersedia. Jalankan kembali scripts/setup-sheet.mjs.');
+      throw new Error('Tab RIWAYAT_KELAS belum tersedia. Periksa konfigurasi database Supabase.');
     }
     throw e;
   }
@@ -449,7 +451,7 @@ async function ensureAttendanceSheets() {
   } catch (e) {
     const status = Number(e?.code || e?.status || e?.response?.status);
     if ([400, 404].includes(status)) {
-      throw new Error('Tab ABSENSI_SESI dan ABSENSI belum tersedia. Jalankan kembali scripts/setup-sheet.mjs.');
+      throw new Error('Tab ABSENSI_SESI dan ABSENSI belum tersedia. Periksa konfigurasi database Supabase.');
     }
     throw e;
   }

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createLearningService, buildAttendance, summarizeAttendance, normalizeContent, safeLink } from '../api/_lib/learning.js';
 import { validateUploads, MAX_UPLOAD_BYTES } from '../api/_lib/learning-files.js';
 import { HEADERS } from '../api/_lib/store.js';
-process.env.HASH_SECRET='learning-test-secret';
+process.env.APP_HASH_SECRET='learning-test-secret';
 const admin={role:'A'}, student={role:'S',id:'S1'};
 const pdf={name:'jawaban.pdf',mime:'application/pdf',base64:Buffer.from('%PDF-1.4\nfixture').toString('base64')};
 function fixture(){
@@ -65,7 +65,7 @@ test('files remain owner/admin only, even when arbitrary identifiers are supplie
  const {service,tables}=fixture();await service.submit(student,{taskId:'T1',requestId:'request_123',files:[pdf]});const sub=tables.PENGUMPULAN[1],file=JSON.parse(sub[5])[0],input={submissionId:sub[0],fileId:file.id};
  await assert.rejects(service.download({role:'S',id:'S2'},input),/ditolak/);assert.equal((await service.download(student,input)).name,file.name);assert.equal((await service.download(admin,input)).name,file.name);await assert.rejects(service.download(student,{...input,fileId:'foreign'}),/ditolak/);
 });
-test('partial Drive upload failure cleans uploaded files and creates no submission',async()=>{
+test('partial upload failure cleans uploaded files and creates no submission',async()=>{
  const {service,storage,tables}=fixture();const put=storage.put.bind(storage);storage.put=async f=>{if(storage.next===2)throw new Error('Drive failure');return put(f);};await assert.rejects(service.submit(student,{taskId:'T1',requestId:'request_123',files:[pdf,pdf]}),/Unggahan/);assert.deepEqual(storage.deleted,['F1']);assert.equal(tables.PENGUMPULAN.length,1);
 });
 test('grade feedback reaches the owner and rejects invalid grades',async()=>{

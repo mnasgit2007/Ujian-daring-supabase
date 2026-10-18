@@ -1,5 +1,6 @@
-import { google } from 'googleapis';
-import { Readable } from 'node:stream';
+import { randomUUID } from 'node:crypto';
+import { supabaseAdmin, unwrap } from './supabase.js';
+import { requirePrivateBucket, downloadPrivateFile } from './storage.js';
 
 export const MAX_UPLOAD_BYTES = 2 * 1024 * 1024;
 export const MAX_UPLOAD_FILES = 5;
@@ -25,48 +26,41 @@ export function validateUploads(files) {
 }
 
 export function uploadConfigured() {
-  return Boolean(process.env.ASSIGNMENT_DRIVE_FOLDER_ID && (
-    (process.env.DRIVE_OAUTH_CLIENT_ID && process.env.DRIVE_OAUTH_CLIENT_SECRET && process.env.DRIVE_OAUTH_REFRESH_TOKEN) ||
-    (process.env.GOOGLE_CLIENT_EMAIL && process.env.GOOGLE_PRIVATE_KEY)
-  ));
-}
-function uploadDrive() {
-  if (!uploadConfigured()) throw new Error('Penyimpanan tugas belum diatur oleh admin.');
-  let auth;
-  if (process.env.DRIVE_OAUTH_REFRESH_TOKEN) {
-    auth = new google.auth.OAuth2(process.env.DRIVE_OAUTH_CLIENT_ID, process.env.DRIVE_OAUTH_CLIENT_SECRET);
-    auth.setCredentials({ refresh_token: process.env.DRIVE_OAUTH_REFRESH_TOKEN });
-  } else {
-    auth = new google.auth.JWT({ email: process.env.GOOGLE_CLIENT_EMAIL, key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'), scopes: ['https://www.googleapis.com/auth/drive'] });
-  }
-  return google.drive({ version: 'v3', auth });
+  return Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_SECRET_KEY);
 }
 
-export const assignmentFiles = {
-  async checkFolder() {
-    const drive = uploadDrive();
-    const { data } = await drive.files.get({ fileId: process.env.ASSIGNMENT_DRIVE_FOLDER_ID, supportsAllDrives: true, fields: 'id,mimeType,driveId,capabilities(canAddChildren),permissions(type,role)' });
-    if (data.mimeType !== 'application/vnd.google-apps.folder' || !data.capabilities?.canAddChildren) throw new Error('Folder tugas tidak dapat ditulisi. Periksa akses Google Drive.');
-    if (!process.env.DRIVE_OAUTH_REFRESH_TOKEN && !data.driveId) throw new Error('Service account memerlukan folder Shared Drive. Untuk My Drive gunakan OAuth pemilik.');
-    if (data.permissions?.some(p => ['anyone','domain'].includes(p.type))) throw new Error('Folder tugas harus privat, bukan dibagikan ke publik/domain.');
-    return { ok: true };
-  },
-  async put(file, prefix) {
-    const { data } = await uploadDrive().files.create({
-      supportsAllDrives: true, fields: 'id',
-      requestBody: { name: prefix + '-' + file.name, parents: [process.env.ASSIGNMENT_DRIVE_FOLDER_ID] },
-      media: { mimeType: file.mime, body: Readable.from(file.bytes) }
-    });
-    return { id: data.id, name: file.name, mime: file.mime, size: file.size };
-  },
-  async remove(id) { await uploadDrive().files.delete({ fileId: id, supportsAllDrives: true }); },
-  async get(file) {
-    const drive = uploadDrive();
-    const { data: meta } = await drive.files.get({ fileId: file.id, supportsAllDrives: true, fields: 'mimeType,size' });
-    if (!extensions[meta.mimeType] || Number(meta.size) > MAX_UPLOAD_BYTES) throw new Error('Berkas tidak valid atau terlalu besar.');
-    const { data } = await drive.files.get({ fileId: file.id, alt: 'media', supportsAllDrives: true }, { responseType: 'arraybuffer' });
-    const bytes = Buffer.from(data);
-    if (bytes.length > MAX_UPLOAD_BYTES) throw new Error('Berkas terlalu besar.');
-    return { name: file.name, mime: meta.mimeType, base64: bytes.toString('base64') };
-  }
-};
+const BUCKET = 'assignment-submissions';
+
+export function createAssignmentFiles(getClient = supabaseAdmin) {
+  return {
+    async checkFolder() {
+      await requirePrivateBucket(getClient(), BUCKET);
+      return { ok: true };
+    },
+    async put(file, prefix) {
+      if (!/^[A-Za-z0-9_-]+$/.test(prefix) || !extensions[file.mime]) throw new Error('Nama unggahan tidak valid.');
+      const id = prefix + '/' + randomUUID() + extensions[file.mime];
+      await requirePrivateBucket(getClient(), BUCKET);
+      unwrap(await getClient().storage.from(BUCKET).upload(id, file.bytes, {
+        contentType: file.mime, upsert: false
+      }), 'Unggah tugas');
+      return { id, name: file.name, mime: file.mime, size: file.size };
+    },
+    async remove(id) {
+      if (!validId(id)) throw new Error('ID berkas tidak valid.');
+      unwrap(await getClient().storage.from(BUCKET).remove([id]), 'Hapus unggahan');
+    },
+    async get(file) {
+      if (!validId(file.id) || !extensions[file.mime] || !Number.isSafeInteger(file.size) || file.size < 1 || file.size > MAX_UPLOAD_BYTES) throw new Error('Berkas tidak valid.');
+      const bytes = await downloadPrivateFile(getClient(), BUCKET, file.id, MAX_UPLOAD_BYTES);
+      if (bytes.length !== file.size) throw new Error('Ukuran berkas tidak sesuai.');
+      const base64 = bytes.toString('base64');
+      validateUploads([{ name: file.name, mime: file.mime, base64 }]);
+      return { name: file.name, mime: file.mime, base64 };
+    }
+  };
+}
+function validId(id) {
+  return /^[A-Za-z0-9_-]+\/[a-f0-9-]{36}\.(jpg|png|webp|pdf)$/.test(id || '');
+}
+export const assignmentFiles = createAssignmentFiles();

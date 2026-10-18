@@ -3,6 +3,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import XLSX from 'xlsx';
 import { SHEETS, appendRows, readRows } from '../api/_lib/store.js';
+import { validateImagePath } from '../api/_lib/storage.js';
 
 export const MAX_SOAL_IMPORT = 80;
 
@@ -12,7 +13,7 @@ const HEADER_ALIASES = Object.freeze({
   a: 'A', opsiA: 'A', optiona: 'A', b: 'B', opsiB: 'B', optionb: 'B',
   c: 'C', opsiC: 'C', optionc: 'C', d: 'D', opsiD: 'D', optiond: 'D',
   kunci: 'Kunci', key: 'Kunci', answer: 'Kunci', bobot: 'Bobot', weight: 'Bobot',
-  drivefileid: 'DriveFileId', imagefileid: 'DriveFileId', gambar: 'DriveFileId'
+  storagepath: 'StoragePath', drivefileid: 'StoragePath', imagefileid: 'StoragePath', gambar: 'StoragePath'
 });
 const REQUIRED = ['SoalID', 'Pertanyaan', 'A', 'B', 'C', 'D', 'Kunci', 'Bobot'];
 const text = value => String(value ?? '').trim();
@@ -42,8 +43,9 @@ export function parseQuestionRows(matrix, examId, sourceName = 'file') {
     if (!valueOf('Pertanyaan') || !valueOf('A') || !valueOf('B') || !valueOf('C') || !valueOf('D')) throw new Error(`${sourceName} baris ${line}: pertanyaan dan pilihan A-D wajib diisi.`);
     if (!['A', 'B', 'C', 'D'].includes(key)) throw new Error(`${sourceName} baris ${line}: Kunci harus A, B, C, atau D.`);
     if (!Number.isFinite(weight) || weight <= 0) throw new Error(`${sourceName} baris ${line}: Bobot harus lebih besar dari 0.`);
+    if (valueOf('StoragePath')) validateImagePath(valueOf('StoragePath'));
     seen.add(id);
-    rows.push([String(examId), id, valueOf('Pertanyaan'), valueOf('A'), valueOf('B'), valueOf('C'), valueOf('D'), key, weight, valueOf('DriveFileId')]);
+    rows.push([String(examId), id, valueOf('Pertanyaan'), valueOf('A'), valueOf('B'), valueOf('C'), valueOf('D'), key, weight, valueOf('StoragePath')]);
   });
   if (!rows.length) throw new Error(`${sourceName}: tidak ada baris soal yang dapat diimpor.`);
   if (rows.length > MAX_SOAL_IMPORT) throw new Error(`${sourceName}: jumlah soal melebihi batas ${MAX_SOAL_IMPORT}.`);
@@ -67,14 +69,18 @@ async function main() {
   const apply = process.argv.includes('--apply');
   if (!file || !examId) throw new Error('Gunakan: node scripts/question-import.mjs --file=soal.tsv --exam-id=P02 [--apply]');
   const rows = parseQuestionRows(readQuestionFile(file), examId, path.basename(file));
+  const exams = await readRows(SHEETS.UJIAN, { fresh: true });
+  const exam = exams.slice(1).find(row => String(row[0]) === examId);
+  if (!exam || exam[5] !== 'TUTUP') throw new Error('Buat ujian dan pastikan statusnya TUTUP sebelum mengimpor soal.');
   const existing = await readRows(SHEETS.SOAL, { fresh: true });
   const existingIds = new Set(existing.slice(1).filter(row => String(row[0]) === examId).map(row => String(row[1])));
   const conflict = rows.map(row => row[1]).filter(id => existingIds.has(id));
   if (conflict.length) throw new Error(`SoalID sudah ada untuk ${examId}: ${conflict.join(', ')}. Impor dibatalkan agar tidak menggandakan soal.`);
+  if (existingIds.size + rows.length > MAX_SOAL_IMPORT) throw new Error('Jumlah soal setelah impor melebihi batas 80 soal.');
   console.log(`Validasi berhasil: ${rows.length} soal untuk ujian ${examId}.`);
-  if (!apply) { console.log('Mode dry-run: tidak ada perubahan pada Google Sheets. Gunakan --apply setelah hasil validasi diperiksa.'); return; }
+  if (!apply) { console.log('Mode dry-run: tidak ada perubahan pada Supabase. Gunakan --apply setelah hasil validasi diperiksa.'); return; }
   await appendRows(SHEETS.SOAL, rows);
-  console.log(`Impor selesai: ${rows.length} soal ditambahkan ke sheet ${SHEETS.SOAL}.`);
+  console.log(`Impor selesai: ${rows.length} soal ditambahkan ke dataset ${SHEETS.SOAL}.`);
 }
 
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;

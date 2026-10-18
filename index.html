@@ -569,7 +569,7 @@ async function submit(auto){if(!S.exam||S.submitting)return;const empty=S.questi
 function showResult(r){if(S.timer)clearInterval(S.timer);stopHeartbeat();if(S.saveTimer)clearTimeout(S.saveTimer);if(S.exam)removeLocal();S.exam=null;S.ticket='';S.submitting=false;busy('submitBtn',false);view('resultView');el('resultTitle').textContent=r.status==='WAKTU_HABIS'?'Waktu ujian berakhir':'Ujian selesai';el('resultText').textContent=r.score===null||r.score===undefined?'Pengumpulan dicatat. Nilai tidak ditampilkan atau perlu dibuka oleh guru.':'Nilai Anda: '+scoreText(r.score,r.maxScore);}
 el('backBtn').onclick=refreshStudent;
 el('adminRefresh').onclick=async()=>{try{renderAdmin(await call('getAdminDashboard',S.token));}catch(e){error(e);}};
-let questionEditId='';
+let questionEditId='',questionExamId='',questionLoadGeneration=0;
 function niceTime(t){const m=/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/.exec(String(t));if(!m)return String(t);const b=['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];return (+m[3])+' '+b[+m[2]-1]+' '+m[1]+', '+m[4]+'.'+m[5];}
 function setupAdminNavigation(){
   if(el('adminNav'))return;
@@ -757,23 +757,59 @@ function renderStudentPlacement(students,classes,history){
   function questionEditorVisible(value){el('questionEditor').classList.toggle('hidden',!value);if(value)window.scrollTo({top:el('questionEditor').offsetTop-20,behavior:'smooth'});}
 function resetQuestionForm(){questionEditId='';el('questionForm').reset();el('questionId').readOnly=false;el('questionWeight').value='1';el('questionKey').value='A';el('questionSave').textContent='Simpan soal';el('questionEditorTitle').textContent='Tambah soal';}
 function fillQuestionForm(q){questionEditId=q.id;el('questionId').value=q.id;el('questionId').readOnly=true;el('questionTextInput').value=q.text;el('questionA').value=q.a;el('questionB').value=q.b;el('questionC').value=q.c;el('questionD').value=q.d;el('questionKey').value=q.key;el('questionWeight').value=q.weight;el('questionFileId').value=q.fileId||'';el('questionSave').textContent='Perbarui soal';el('questionEditorTitle').textContent='Edit soal '+q.id;}
-function readQuestionForm(){return {examId:S.adminExamId,questionId:el('questionId').value,text:el('questionTextInput').value,a:el('questionA').value,b:el('questionB').value,c:el('questionC').value,d:el('questionD').value,key:el('questionKey').value,weight:el('questionWeight').value,fileId:el('questionFileId').value,originalQuestionId:questionEditId};}
+function readQuestionForm(){return {examId:questionExamId,questionId:el('questionId').value,text:el('questionTextInput').value,a:el('questionA').value,b:el('questionB').value,c:el('questionC').value,d:el('questionD').value,key:el('questionKey').value,weight:el('questionWeight').value,fileId:el('questionFileId').value,originalQuestionId:questionEditId};}
 function renderQuestionRows(data){
   el('questionEditorExam').textContent='Ujian: '+data.examId;
   el('questionCount').textContent=data.questions.length+' soal';
   const out=el('questionRows');out.replaceChildren();
   if(!data.questions.length){const row=node('tr'),cell=node('td','Belum ada soal untuk ujian ini.');cell.colSpan=3;cell.className='admin-empty';row.append(cell);out.append(row);return;}
-  data.questions.forEach(q=>{const row=node('tr');row.append(labeled('td',q.id,'ID'));row.append(labeled('td',q.text,'Pertanyaan'));const actions=node('td');actions.dataset.label='Aksi';actions.className='question-actions';actions.append(btn('Edit',()=>{fillQuestionForm(q);window.scrollTo({top:el('questionEditor').offsetTop-20,behavior:'smooth'});},'secondary smallbtn'));actions.append(btn('Hapus',async()=>{if(!confirm('Hapus soal '+q.id+'? Tindakan ini tidak dapat dibatalkan.'))return;try{const next=await call('adminDeleteQuestion',S.token,S.adminExamId,q.id);resetQuestionForm();renderQuestionRows(next);}catch(e){error(e);}},'danger smallbtn'));row.append(actions);out.append(row);});
+  data.questions.forEach(q=>{const row=node('tr');row.append(labeled('td',q.id,'ID'));row.append(labeled('td',q.text,'Pertanyaan'));const actions=node('td');actions.dataset.label='Aksi';actions.className='question-actions';actions.append(btn('Edit',()=>{fillQuestionForm(q);window.scrollTo({top:el('questionEditor').offsetTop-20,behavior:'smooth'});},'secondary smallbtn'));actions.append(btn('Hapus',async()=>{if(!confirm('Hapus soal '+q.id+'? Tindakan ini tidak dapat dibatalkan.'))return;const token=S.token,examId=questionExamId,generation=questionLoadGeneration;try{const next=await call('adminDeleteQuestion',token,examId,q.id);if(token!==S.token||examId!==questionExamId||generation!==questionLoadGeneration||S.adminPage!=='bank')return;resetQuestionForm();renderQuestionRows(next);}catch(e){error(e);}},'danger smallbtn'));row.append(actions);out.append(row);});
 }
-async function openQuestionEditor(){
-  if(!S.adminExamId){error('Pilih sesi ujian terlebih dahulu.');return;}
-  setAdminPage('bank');
-  try{const data=await call('adminListQuestions',S.token,S.adminExamId);resetQuestionForm();renderQuestionRows(data);questionEditorVisible(true);}catch(e){error(e);}
+function setupQuestionBank(){
+  if(el('questionBankSession'))return;
+  const box=node('div');box.className='question-editor-header';
+  const controls=node('div');controls.className='flex';controls.style.flexWrap='wrap';
+  const label=node('label','Sesi ujian');label.className='field';label.style.flex='1 1 240px';label.style.minWidth='0';
+  const select=node('select');select.id='questionBankSession';select.style.width='100%';select.onchange=()=>loadQuestionBank(select.value);label.append(select);
+  const reload=btn('Muat ulang sesi',()=>openQuestionEditor(true),'secondary');reload.id='questionBankReload';
+  const message=node('p');message.id='questionBankMessage';message.className='muted';message.setAttribute('role','status');message.setAttribute('aria-live','polite');
+  controls.append(label,reload);box.append(controls,message);document.querySelector('.question-editor-body').before(box);
+}
+function clearQuestionBank(message){
+  resetQuestionForm();el('questionEditorTitle').textContent='Bank soal';el('questionEditorExam').textContent='';
+  el('questionRows').replaceChildren();el('questionCount').textContent='0 soal';
+  document.querySelector('.question-editor-body').classList.add('hidden');el('questionBankMessage').textContent=message;
+}
+async function loadQuestionBank(examId){
+  const generation=++questionLoadGeneration,token=S.token;questionExamId=examId;
+  clearError();clearQuestionBank('Memuat soal…');
+  if(!examId){el('questionBankMessage').textContent='Pilih sesi ujian pada daftar di atas.';return;}
+  try{
+    const data=await call('adminListQuestions',token,examId);
+    if(generation!==questionLoadGeneration||token!==S.token||S.adminPage!=='bank')return;
+    resetQuestionForm();renderQuestionRows(data);document.querySelector('.question-editor-body').classList.remove('hidden');
+    el('questionBankMessage').textContent='Soal ditampilkan untuk sesi yang dipilih. Perubahan soal tetap mengikuti status ujian.';
+  }catch(e){if(generation===questionLoadGeneration&&token===S.token&&S.adminPage==='bank')el('questionBankMessage').textContent=e.message||'Soal belum berhasil dimuat. Coba muat ulang sesi.';}
+}
+async function openQuestionEditor(keepSelection=false){
+  clearError();setAdminPage('bank');setupQuestionBank();
+  const generation=++questionLoadGeneration,token=S.token,preferred=keepSelection===true?questionExamId:S.adminExamId;
+  clearQuestionBank('Memuat sesi ujian…');
+  const select=el('questionBankSession'),reload=el('questionBankReload');select.replaceChildren(new Option('Memuat sesi…',''));select.disabled=true;reload.disabled=true;
+  try{
+    const dashboard=await call('getAdminDashboard',token);
+    if(generation!==questionLoadGeneration||token!==S.token||S.adminPage!=='bank')return;
+    const exams=dashboard.exams||[];questionExamId=exams.find(e=>e.id===preferred)?.id||exams[0]?.id||'';
+    select.replaceChildren(...(exams.length?exams.map(e=>new Option(e.title+' · '+e.id+' ('+e.status+')',e.id)):[new Option('Belum ada sesi ujian','')]));
+    select.value=questionExamId;select.disabled=!exams.length;reload.disabled=false;
+    if(!exams.length){el('questionBankMessage').textContent='Belum ada sesi ujian. Buat sesi ujian terlebih dahulu, lalu klik Muat ulang sesi. Soal harus terhubung dengan sebuah sesi ujian.';return;}
+    await loadQuestionBank(questionExamId);
+  }catch(e){if(generation===questionLoadGeneration&&token===S.token&&S.adminPage==='bank'){select.replaceChildren(new Option('Sesi belum berhasil dimuat',''));reload.disabled=false;el('questionBankMessage').textContent=e.message||'Sesi belum berhasil dimuat. Klik Muat ulang sesi.';}}
 }
 el('adminQuestionEditorButton').onclick=openQuestionEditor;
 el('questionEditorClose').onclick=()=>setAdminPage('monitor');
 el('questionCancel').onclick=resetQuestionForm;
-el('questionForm').addEventListener('submit',async ev=>{ev.preventDefault();const input=readQuestionForm();const button=el('questionSave');button.disabled=true;try{const data=questionEditId?await call('adminUpdateQuestion',S.token,input):await call('adminCreateQuestion',S.token,input);resetQuestionForm();renderQuestionRows(data);}catch(e){error(e);}finally{button.disabled=false;}});
+el('questionForm').addEventListener('submit',async ev=>{ev.preventDefault();const input=readQuestionForm(),token=S.token,generation=questionLoadGeneration;const button=el('questionSave');button.disabled=true;try{const data=questionEditId?await call('adminUpdateQuestion',token,input):await call('adminCreateQuestion',token,input);if(token!==S.token||input.examId!==questionExamId||generation!==questionLoadGeneration||S.adminPage!=='bank')return;resetQuestionForm();renderQuestionRows(data);}catch(e){error(e);}finally{button.disabled=false;}});
 function selectAdminExam(examId,d){S.adminExamId=examId;questionEditorVisible(false);renderAdmin(d);}
 function renderAdmin(d){
   window.PortalUI?.core('A',d);

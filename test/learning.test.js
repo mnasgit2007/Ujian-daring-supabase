@@ -83,3 +83,39 @@ test('students transferred into a class do not join its historical snapshot', as
  const d=await service.dashboard(admin);assert.deepEqual(d.attendance.map(r=>r.studentId),['S1']);
  await assert.rejects(service.markAttendance(admin,{sessionId:'A1',studentId:'S2',status:'ALPA'}),/bukan peserta/);
 });
+
+test('only principal admin can reset a teacher password or change active status',async()=>{
+ const {service,tables}=fixture(),before=structuredClone(tables);
+ for(const p of [student,{role:'A',id:'G1'},{role:'X'}]) {
+  await assert.rejects(service.setTeacherPassword(p,{id:'G1',password:'new-long-password'}),e=>e.status===403);
+  await assert.rejects(service.setTeacherStatus(p,{id:'G1',active:false}),e=>e.status===403);
+ }
+ assert.deepEqual(tables,before);
+});
+
+test('teacher reset changes only the credential and status changes preserve learning history',async()=>{
+ const {service,tables}=fixture();const before=structuredClone(tables);
+ await service.setTeacherPassword(admin,{id:'G1',password:'new-long-password'});
+ assert.match(tables.GURU[1][2],/^[a-f0-9]{64}$/);
+ assert.notEqual(tables.GURU[1][2],before.GURU[1][2]);
+ assert.deepEqual(tables.GURU[1].filter((_,i)=>i!==2),before.GURU[1].filter((_,i)=>i!==2));
+ const hash=tables.GURU[1][2];
+ await service.setTeacherStatus(admin,{id:'G1',active:false});
+ assert.equal(tables.GURU[1][3],'TIDAK');assert.equal(tables.GURU[1][2],hash);
+ await assert.rejects(service.dashboard({role:'A',id:'G1'}),/tidak aktif/);
+ await service.setTeacherStatus(admin,{id:'G1',active:true});
+ assert.equal((await service.dashboard({role:'A',id:'G1'})).canManageTeachers,false);
+ for(const key of Object.keys(tables).filter(k=>k!=='GURU'))assert.deepEqual(tables[key],before[key]);
+ const d=await service.dashboard(admin);assert.deepEqual(d.teachers,[{id:'G1',name:'Guru Satu',active:true}]);
+ assert.ok(!JSON.stringify(d).includes(hash));
+});
+
+test('teacher management rejects duplicate/reserved IDs, invalid passwords, statuses and missing accounts',async()=>{
+ const {service,tables}=fixture(),before=structuredClone(tables.GURU);
+ for(const id of ['G1','g1','ADMIN','admin','guru baru'])await assert.rejects(service.createTeacher(admin,{id,name:'Guru Baru',password:'long-password'}));
+ for(const password of ['short',' '.repeat(12),'x'.repeat(81)])await assert.rejects(service.setTeacherPassword(admin,{id:'G1',password}));
+ for(const active of ['false','YA',null,0])await assert.rejects(service.setTeacherStatus(admin,{id:'G1',active}),/Status/);
+ await assert.rejects(service.setTeacherStatus(admin,{id:'missing',active:false}),/tidak ditemukan/);
+ await assert.rejects(service.setTeacherPassword(admin,{id:'missing',password:'long-password'}),/tidak ditemukan/);
+ assert.deepEqual(tables.GURU,before);
+});

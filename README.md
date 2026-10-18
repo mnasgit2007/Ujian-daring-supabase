@@ -10,6 +10,8 @@ Versi untuk aplikasi baru dengan database kosong, terpisah dari aplikasi Google 
 
 **Mulai dari [Panduan aktivasi Supabase dan Vercel](docs/AKTIVASI_SUPABASE_VERCEL.md).** Ikuti urutannya sebelum deploy.
 
+Untuk membuat akun, mengatur password, dan mengaktifkan/nonaktifkan guru dari dashboard admin, ikuti [Panduan pengelolaan guru](docs/PENGELOLAAN_GURU.md).
+
 ## Konfigurasi
 
 Node.js **24.x**. Salin `.env.example` menjadi `.env.local` dan isi hanya nilai dari proyek baru:

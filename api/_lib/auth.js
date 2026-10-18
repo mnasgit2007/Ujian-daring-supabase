@@ -38,6 +38,11 @@ function sig(p) {
   return crypto.createHmac('sha256', secret()).update(p).digest('base64url');
 }
 
+// Bind teacher sessions to the credential without exposing its password hash.
+export function teacherSessionVersion(id, passwordHash) {
+  return sig('TEACHER_SESSION:' + id + ':' + passwordHash);
+}
+
 function sign(obj) {
   const p = Buffer.from(JSON.stringify(obj), 'utf8').toString('base64url');
   return p + '.' + sig(p);
@@ -171,7 +176,9 @@ export function handler(fn) {
           const p = verifyToken(body.token);
           if (p.role === 'A' && p.id) {
             const teachers = await readRows(SHEETS.GURU, { fresh: true });
-            if (!teachers.slice(1).some(r => norm(r[0]) === p.id && norm(r[3]) === 'YA')) throw new Error('Akun guru tidak aktif.');
+            const teacher = teachers.slice(1).find(r => norm(r[0]) === p.id && norm(r[3]) === 'YA');
+            if (!teacher) throw new Error('Akun guru tidak aktif.');
+            if (p.tv !== teacherSessionVersion(p.id, teacher[2])) throw new Error('Sesi guru sudah berakhir. Silakan login kembali dengan password terbaru.');
           }
         }
         return fn(body, req);

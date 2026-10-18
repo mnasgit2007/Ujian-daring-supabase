@@ -164,7 +164,7 @@ Tunggu status **Ready**, lalu **Visit**. Jika gagal, periksa Build Logs terlebih
 
 1. Buka halaman aplikasi Preview, pilih login admin. ID guru dibiarkan kosong; isi kata sandi yang dipakai pada tahap hash-admin.
 2. Dashboard kosong adalah hasil yang benar. Buat kelas melalui fitur Kelas, lalu buat satu siswa uji dan simpan PIN yang ditampilkan.
-3. Buat akun guru melalui admin, lalu uji login memakai ID/kata sandi guru tersebut.
+3. Sebagai admin utama, buka menu **Tambah Guru**, klik **Tambah Guru**, isi ID/nama/password dan konfirmasinya, lalu **Buat akun guru**. Guru login melalui **Guru / Admin** menggunakan ID Guru + password. Untuk reset password dan status akun, lihat [panduan pengelolaan guru](PENGELOLAAN_GURU.md).
 4. Buat materi dan tugas untuk kelas uji. Terbitkan, masuk sebagai siswa, lalu pastikan hanya materi/tugas kelasnya yang muncul.
 5. Kirim foto JPG/PNG/WEBP atau PDF melalui tugas. Batas total 2 MiB, maksimal 5 berkas, seperti alur lama. Pastikan bukti pengumpulan muncul, guru dapat mengunduh, memberi nilai/umpan balik, dan siswa melihat hasilnya.
 6. Uji jadwal mengajar, absensi QR, koreksi Hadir/Izin/Sakit/Alpa, profil, kalender, dan rangkuman dashboard.

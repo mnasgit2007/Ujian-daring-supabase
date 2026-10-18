@@ -21,6 +21,7 @@ const classes=[{id:'K1',name:'XI DKV',grade:'XI',program:'DKV',year:'2026/2027',
 const students=[{id:'S1',name:'Siswa Uji DKV',kelas:'XI DKV',kelompok:'1',classId:'K1',active:true,hasQr:true},{id:'S2',name:'Siswa Kedua DKV',kelas:'XI DKV',kelompok:'2',classId:'K1',active:true,hasQr:true},{id:'S3',name:'Siswa Uji ATR',kelas:'XI ATR',kelompok:'1',classId:'K2',active:true,hasQr:true}];
 const exams=[{id:'E1',title:'Prinsip Dasar Desain',duration:45,start:date(now-3600000),end:date(now+86400000),status:'BUKA',state:'TERSEDIA',score:null,maxScore:null,sessionPin:'',sessionPinRequired:false},{id:'E2',title:'Literasi Visual',duration:30,start:date(now-86400000*3),end:date(now-86400000*2),status:'TUTUP',state:'SELESAI',score:85,maxScore:100,submittedMs:now-86400000*2,sessionPin:'',sessionPinRequired:false}];
 function fixture(){
+  const teachers=[{id:'G1',name:'Guru DKV',active:true}];
   const core={exams:structuredClone(exams),students:structuredClone(students),classes:structuredClone(classes),classHistory:[],attendanceSessions:[],attendanceRecords:[],attempts:[{examId:'E2',studentId:'S1',attemptId:'A1',status:'SELESAI',start:date(now-86400000*3),lastSaved:date(now-86400000*2),submitted:date(now-86400000*2),revision:1,score:85,maxScore:100}],examRosters:{E1:{classIds:['K1'],studentIds:['S1','S2']},E2:{classIds:['K1'],studentIds:['S1','S2']}},refreshed:date(now)};
   const profile={S:{id:'S1',name:'Siswa Uji DKV',officialName:'Siswa Uji DKV',email:'',phone:'',bio:'Belajar membuat desain yang menyampaikan pesan.',subject:'',className:'XI DKV',group:'1'},A:{id:'ADMIN',name:'Guru Uji',officialName:'Guru Uji',email:'',phone:'',bio:'Mendampingi siswa SMKN 1 Manggelewa.',subject:'Desain Komunikasi Visual',className:'',group:''}};
   const tasks=[{id:'T1',classId:'K1',title:'Satu Pesan Tiga Susunan',instructions:'Foto hasil sketsa dan kumpulkan.',due:now+3600000,allowLate:true,status:'TERBIT'},{id:'T2',classId:'K1',title:'Analisis Poster',instructions:'Jelaskan titik fokus poster.',due:now-86400000,status:'TERBIT',allowLate:true}];
@@ -30,14 +31,17 @@ function fixture(){
   const meeting={...schedule,date:today,startMs:now,endMs:now+5400000,sessionId:'JAD-fixture',cancelled:false,note:''};
   const academic={ready:true,schedules:[schedule],meetings:[meeting],todayMeetings:[meeting],teachers:[{id:'ADMIN',name:'Admin utama'},{id:'G1',name:'Guru DKV'}]};
   const requests=[];
-  const learning=r=>({profile:profile[r],photo:'',photoEnabled:true,classes:r==='A'?classes:classes.slice(0,1),students:r==='A'?students:[],teachers:[],canManageTeachers:r==='A',materials:[{id:'M1',classId:'K1',title:'Elemen Dasar Desain',topic:'Pertemuan 3',content:'Titik, garis, bentuk, dan ruang.',link:'',status:'TERBIT'}],tasks,submissions,attendance,sessions:[],uploadConfigured:true});
+  const learning=(r,principal=true)=>({profile:!principal&&r==='A'?{...profile.A,id:'G1',name:'Guru DKV'}:profile[r],photo:'',photoEnabled:true,classes:r==='A'?classes:classes.slice(0,1),students:r==='A'?students:[],teachers:r==='A'&&principal?teachers:[],canManageTeachers:r==='A'&&principal,materials:[{id:'M1',classId:'K1',title:'Elemen Dasar Desain',topic:'Pertemuan 3',content:'Titik, garis, bentuk, dan ruang.',link:'',status:'TERBIT'}],tasks,submissions,attendance,sessions:[],uploadConfigured:true});
   const dashboard=r=>r==='A'?core:{student:students[0],exams:core.exams};
   return {core,requests,academic,async route(route){
-    const req=route.request(),url=new URL(req.url()),b=req.postDataJSON()||{},r=b.token==='fixture-A'||b.role==='admin'?'A':'S';requests.push({path:url.pathname,...b});let data;
-    if(url.pathname==='/api/login')data={token:'fixture-'+r,...dashboard(r)};
+    const req=route.request(),url=new URL(req.url()),b=req.postDataJSON()||{},r=['fixture-A','fixture-G1'].includes(b.token)||b.role==='admin'?'A':'S',principal=!b.teacherId&&b.token!=='fixture-G1';requests.push({path:url.pathname,...b});let data;
+    if(url.pathname==='/api/login')data={token:principal?'fixture-'+r:'fixture-G1',...dashboard(r)};
     else if(url.pathname==='/api/dashboard')data=dashboard(r);
     else if(url.pathname==='/api/learning'){
-      if(b.action==='dashboard')data=learning(r);
+      if(b.action==='dashboard')data=learning(r,principal);
+      else if(b.action==='createTeacher'){if(teachers.some(t=>t.id===b.id))data={error:'ID guru sudah digunakan.'};else{teachers.push({id:b.id,name:b.name,active:true});data={ok:true};}}
+      else if(b.action==='setTeacherPassword')data={ok:true};
+      else if(b.action==='setTeacherStatus'){teachers.find(t=>t.id===b.id).active=b.active;data={ok:true};}
       else if(b.action==='academic')data=academic;
       else if(b.action==='saveProfile'){Object.assign(profile[r],{name:b.name,email:b.email,phone:b.phone,bio:b.bio,subject:b.subject});data={ok:true};}
       else if(b.action==='saveRoster'){core.examRosters[b.examId]={classIds:b.classIds,studentIds:b.studentIds};data={ok:true};}
@@ -45,10 +49,10 @@ function fixture(){
       else if(b.action==='openMeeting'){core.attendanceSessions=[{id:'JAD-fixture',classId:'K1',className:'XI DKV',title:'Desain Komunikasi Visual',opened:date(now),status:'BUKA',presentCount:0}];data={ok:true,sessionId:'JAD-fixture'};}
       else throw Error('Unexpected learning action: '+b.action);
     }else throw Error('Unexpected API: '+url.pathname);
-    await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(data)});
+    await route.fulfill({status:data.error?400:200,contentType:'application/json',body:JSON.stringify(data)});
   }};
 }
-const browser=await chromium.launch({headless:true});
+const browser=await chromium.launch({headless:true,...(process.env.QA_CHROMIUM_PATH?{executablePath:process.env.QA_CHROMIUM_PATH,args:['--no-sandbox','--disable-dev-shm-usage']}: {})});
 const report=[];
 async function checkOverflow(page,label){
   const size=await page.evaluate(()=>({content:document.documentElement.scrollWidth,viewport:document.documentElement.clientWidth}));
@@ -73,6 +77,31 @@ async function scenario(r,width){
     await nav('schedule').click();await page.locator('.p-schedule-item:visible').first().waitFor();await checkOverflow(page,r+' schedule '+width);
     await page.locator('#pAgendaMode').click();await page.locator('.p-calendar-events .p-event').first().waitFor();await page.locator('#pMonthMode').click();
     if(r==='A'){
+      await nav('teachers').click();await page.locator('#lpAddTeacher').click();
+      const form=page.locator('#lpTeacherForm');
+      await form.locator('[name=id]').fill('G2');await form.locator('[name=name]').fill('Guru Baru');
+      await form.locator('[name=password]').fill('fixture-password');await form.locator('[name=confirmPassword]').fill('different-password');
+      await form.getByRole('button',{name:'Buat akun guru'}).click();
+      await page.locator('#lpNoticeA').filter({hasText:'Kedua password harus sama'}).waitFor();
+      assert.ok(!f.requests.some(x=>x.action==='createTeacher'));
+      await form.locator('[name=confirmPassword]').fill('fixture-password');
+      await checkOverflow(page,'teacher form '+width);
+      await page.screenshot({path:path.join(output,'A-teacher-form-'+width+'.png'),fullPage:true});
+      await form.getByRole('button',{name:'Buat akun guru'}).click();
+      const card=page.locator('.lp-teacher-card').filter({hasText:'Guru Baru'});await card.waitFor();
+      assert.equal(f.requests.find(x=>x.action==='createTeacher').confirmPassword,undefined);
+      assert.equal(await page.locator('#lpTeacherForm').count(),0);
+      await card.getByRole('button',{name:'Atur password'}).click();
+      await form.locator('[name=password]').fill('fixture-new-password');await form.locator('[name=confirmPassword]').fill('fixture-new-password');
+      await form.getByRole('button',{name:'Simpan password'}).click();
+      await page.locator('#lpNoticeA').filter({hasText:'Password guru diperbarui'}).waitFor();
+      assert.equal(f.requests.find(x=>x.action==='setTeacherPassword').id,'G2');
+      page.on('dialog',dialog=>dialog.accept());
+      await card.getByRole('button',{name:'Nonaktifkan'}).click();await card.locator('.lp-badge').filter({hasText:'Nonaktif'}).waitFor();
+      await card.getByRole('button',{name:'Aktifkan',exact:false}).click();await card.locator('.lp-badge').filter({hasText:/^Aktif$/}).waitFor();
+      await page.locator('#lpTeacherSearch').fill('Guru Baru');assert.equal(await page.locator('.lp-teacher-card').count(),1);
+      await checkOverflow(page,'teacher list '+width);await page.screenshot({path:path.join(output,'A-teachers-'+width+'.png'),fullPage:true});
+      await nav('schedule').click();
       await page.locator('#pNewSchedule').click();await page.locator('#pScheduleForm [name=subject]').fill('Praktik Visual');await page.locator('#pScheduleForm [name=start]').fill('10:00');await page.locator('#pScheduleForm [name=end]').fill('11:00');await page.locator('#pScheduleForm [name=until]').fill(day(now+86400000*30));await page.locator('#pScheduleForm [type=submit]').click();
       await page.locator('.p-schedule-item h4').filter({hasText:'Praktik Visual'}).waitFor();
       await page.locator('[data-open-meeting]').first().click();await page.locator('#adminAttendancePage:not(.hidden)').waitFor();
@@ -85,11 +114,27 @@ async function scenario(r,width){
       assert.deepEqual(f.requests.findLast(x=>x.action==='saveRoster').studentIds,['S1']);
       await checkOverflow(page,'monitor '+width);await page.screenshot({path:path.join(output,'A-monitor-'+width+'.png'),fullPage:true});
     }else{
+      assert.equal(await page.locator('#lpTeachersNav:visible').count(),0);
       await page.locator('.student-rail a[href="#examList"]').click();await page.locator('#examList:visible').waitFor();assert.equal(await page.locator('#examList h3').count(),2);await checkOverflow(page,'student exams '+width);
     }
     assert.deepEqual(errors,[],'browser errors');report.push({role:r,width,status:'passed',apiRequests:f.requests.length});
   }catch(e){await page.screenshot({path:path.join(output,r+'-failure-'+width+'.png'),fullPage:true});report.push({role:r,width,status:'failed',error:e.stack,pageErrors:errors});throw e;}
   finally{await context.close();}
 }
-try{for(const r of ['S','A'])for(const width of [1440,390])await scenario(r,width);console.log(JSON.stringify(report,null,2));}
+async function teacherLoginScenario(){
+  const f=fixture(),context=await browser.newContext({viewport:{width:390,height:900}}),page=await context.newPage();
+  await page.route('**/api/**',route=>f.route(route));
+  try{
+    await page.goto(origin);await page.locator('#adminTab').click();await page.locator('#teacherLoginId').fill('G1');await page.locator('#password').fill('teacher-password');await page.locator('#loginBtn').click();
+    await page.locator('.p-hero:visible').waitFor();
+    assert.equal(f.requests.find(x=>x.path==='/api/login').teacherId,'G1');
+    assert.equal(await page.locator('#lpTeachersNav:visible').count(),0);
+    await page.evaluate(()=>window.LearningUI.show('teachers'));
+    assert.equal(await page.locator('#lpAddTeacher').count(),0);
+    await page.locator('[data-lp-role=A][data-lp-page=profile]').click();await page.locator('.p-identity:visible').waitFor();
+    assert.equal(await page.locator('#lpTeacherForm').count(),0);
+    report.push({role:'named-teacher',width:390,status:'passed'});
+  }finally{await context.close();}
+}
+try{for(const r of ['S','A'])for(const width of [1440,390])await scenario(r,width);await teacherLoginScenario();console.log(JSON.stringify(report,null,2));}
 finally{await fs.writeFile(path.join(output,'report.json'),JSON.stringify(report,null,2));await browser.close();await new Promise(resolve=>server.close(resolve));}

@@ -10,6 +10,7 @@
   const done=s=>['SELESAI','WAKTU_HABIS'].includes(s);
   const icons={dashboard:'M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z',schedule:'M4 5h16v16H4z M8 3v4 M16 3v4 M4 10h16 M8 14h2 M14 14h2',attendance:'M5 4h14v17H5z M9 2h6v4H9z M8 13l3 3 5-6',materials:'M3 4c4-1 6 0 9 2 3-2 5-3 9-2v15c-4-1-6 0-9 2-3-2-5-3-9-2z M12 6v15',tasks:'M5 3h10l4 4v14H5z M15 3v5h4 M8 12h8 M8 16h5',profile:'M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0 M4 21v-2a8 8 0 0 1 16 0v2',monitor:'M3 4h18v13H3z M8 21h8 M12 17v4 M6 12l3-4 4 5 4-6',classes:'M3 9l9-6 9 6-9 6z M6 12v6l6 3 6-3v-6',arrow:'M5 12h14 M13 6l6 6-6 6'};
   icons.exams=icons.monitor;
+  icons.teachers='M14 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0 M2 21v-2a8 8 0 0 1 12-7 M18 14v8 M14 18h8';
   const icon=k=>`<svg class="p-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${icons[k]||icons.tasks}"/></svg>`;
   let coreData={},learning=null,academic=null,role='',token='',pageName='',host=null,academicError='',request=0,filter={classId:'',period:'30',teacherId:''},month=day(Date.now()).slice(0,7),selectedDay=day(Date.now()),calendarMode='month',classTab='catalog';
   const empty=t=>`<div class="p-empty">${esc(t)}</div>`;

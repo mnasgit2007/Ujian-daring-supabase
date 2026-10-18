@@ -59,6 +59,34 @@ test('real API handlers and Supabase SDK preserve login, roster, exam autosave, 
     const owner = await call(login, { role:'admin', password:'offline-admin-password' });
     assert.deepEqual(owner.students, []);
     assert.deepEqual(owner.exams, []);
+    // Exercise teacher management through actual handlers, SDK and PostgreSQL.
+    async function denied(handler, body, expected) {
+      let code, data;const log=console.error;console.error=()=>{};
+      try {await handler({method:'POST',body},{status(value){code=value;return this;},json(value){data=value;}});}
+      finally {console.error=log;}
+      assert.ok(code>=400);assert.match(data.error,expected);
+    }
+    await call(learning,{token:owner.token,action:'createTeacher',id:'G1',name:'Guru DKV',password:'teacher-old-password'});
+    const guru=await call(login,{role:'admin',teacherId:'G1',password:'teacher-old-password'});
+    const guruDashboard=await call(learning,{token:guru.token});
+    assert.equal(guruDashboard.canManageTeachers,false);assert.deepEqual(guruDashboard.teachers,[]);
+    for(const action of ['createTeacher','setTeacherPassword','setTeacherStatus']) {
+      await denied(learning,{token:guru.token,action,id:'G1',name:'Guru',password:'attacker-password',active:false},/admin utama/);
+    }
+    await call(learning,{token:owner.token,action:'setTeacherPassword',id:'G1',password:'teacher-new-password'});
+    await denied(login,{role:'admin',teacherId:'G1',password:'teacher-old-password'},/salah/);
+    await denied(admin,{token:guru.token},/Sesi guru sudah berakhir/);
+    const resetGuru=await call(login,{role:'admin',teacherId:'G1',password:'teacher-new-password'});
+    await call(learning,{token:owner.token,action:'setTeacherStatus',id:'G1',active:false});
+    await denied(login,{role:'admin',teacherId:'G1',password:'teacher-new-password'},/tidak aktif/);
+    await denied(admin,{token:resetGuru.token},/tidak aktif/);
+    await denied(learning,{token:resetGuru.token},/tidak aktif/);
+    await call(learning,{token:owner.token,action:'setTeacherStatus',id:'G1',active:true});
+    const activeGuru=await call(login,{role:'admin',teacherId:'G1',password:'teacher-new-password'});
+    assert.ok(activeGuru.token);
+    const teacherList=await call(learning,{token:owner.token});
+    assert.deepEqual(teacherList.teachers,[{id:'G1',name:'Guru DKV',active:true}]);
+    assert.ok(!JSON.stringify(teacherList).includes((await readRows('GURU'))[1][2]));
     const withClass = await call(admin, { token:owner.token, action:'createClass', name:'XI DKV', grade:'XI', program:'DKV', year:'2026/2027', semester:'Ganjil' });
     const classId = withClass.classes[0].id;
     const created = await call(admin, { token:owner.token, action:'createStudent', studentId:'S1', name:'Ani', classId });
@@ -68,6 +96,7 @@ test('real API handlers and Supabase SDK preserve login, roster, exam autosave, 
     await call(learning, { token:owner.token, action:'saveRoster', examId:'P1', classIds:[classId], studentIds:['S1'] });
     const opened = await call(admin, { token:owner.token, action:'setStatus', examId:'P1', status:'BUKA' });
     const student = await call(login, { role:'student', id:'S1', pin:created.createdStudent.pin });
+    await denied(learning,{token:student.token,action:'setTeacherStatus',id:'G1',active:false},/admin utama/);
     assert.equal(student.exams[0].assigned, true);
     assert.ok(!JSON.stringify(student).includes('PinHash'));
     const started = await call(attempt, { token:student.token, action:'start', examId:'P1', sessionPin:opened.exams[0].sessionPin });

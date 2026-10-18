@@ -1,4 +1,4 @@
-import { handler, norm, checkThrottle, recordFailure, clearThrottle, hashSiswa, hashAdmin, hash, signToken } from './_lib/auth.js';
+import { handler, norm, checkThrottle, recordFailure, clearThrottle, hashSiswa, hashAdmin, hash, signToken, teacherSessionVersion } from './_lib/auth.js';
 import { getStudents, dashboardSiswa, adminDashboard } from './_lib/exam.js';
 import { SHEETS, preload, readRows } from './_lib/store.js';
 
@@ -45,7 +45,7 @@ async function loginAdmin(body) {
       await recordFailure(key, throttle); throw new Error('ID/kata sandi guru salah atau akun tidak aktif.');
     }
     await clearThrottle(key, throttle);
-    return { token: signToken({ role: 'A', id: teacherId }), ...(await adminDashboard()) };
+    return { token: signToken({ role: 'A', id: teacherId, tv: teacherSessionVersion(teacherId, teacher[2]) }), ...(await adminDashboard()) };
   }
   await preload([SHEETS.LOGIN_LIMIT, SHEETS.UJIAN, SHEETS.SISWA, SHEETS.SESI]);
   const throttle = await checkThrottle('ADMIN');

@@ -9,12 +9,10 @@ export function isYa(v) {
   return norm(v).toUpperCase() === 'YA';
 }
 
-// Setara hash_() di Code.gs: sha256(secret + '|' + text). HASH_SECRET dibuat
-// bebas — proyek ini belum pernah dipasang di akun Google (lihat PANDUAN_INSTALASI.md),
-// jadi tidak ada PIN lama yang perlu tetap kompatibel.
+// Preserve the original SHA-256 credential format with a separate project secret.
 export function hash(text) {
-  const secret = process.env.HASH_SECRET;
-  if (!secret) throw new Error('HASH_SECRET belum diatur di Environment Variables Vercel.');
+  const secret = process.env.APP_HASH_SECRET;
+  if (!secret) throw new Error('APP_HASH_SECRET belum diatur di Environment Variables Vercel.');
   return crypto.createHash('sha256').update(secret + '|' + text, 'utf8').digest('hex');
 }
 
@@ -27,17 +25,22 @@ export function hashAdmin(password) {
 }
 
 function secret() {
-  const s = process.env.SESSION_SECRET;
-  if (!s) throw new Error('SESSION_SECRET belum diatur di Environment Variables Vercel.');
+  const s = process.env.APP_SESSION_SECRET;
+  if (!s) throw new Error('APP_SESSION_SECRET belum diatur di Environment Variables Vercel.');
   return s;
 }
 
-export const SESSION_SECONDS = Math.max(900, Math.min(Number(process.env.SESSION_TTL_SECONDS || 21600), 21600));
+export const SESSION_SECONDS = Math.max(900, Math.min(Number(process.env.APP_SESSION_TTL_SECONDS || 21600), 21600));
 
 // --- primitif tanda tangan bersama (dipakai token sesi dan tiket sesi ujian) ---
 
 function sig(p) {
   return crypto.createHmac('sha256', secret()).update(p).digest('base64url');
+}
+
+// Bind teacher sessions to the credential without exposing its password hash.
+export function teacherSessionVersion(id, passwordHash) {
+  return sig('TEACHER_SESSION:' + id + ':' + passwordHash);
 }
 
 function sign(obj) {
@@ -173,7 +176,9 @@ export function handler(fn) {
           const p = verifyToken(body.token);
           if (p.role === 'A' && p.id) {
             const teachers = await readRows(SHEETS.GURU, { fresh: true });
-            if (!teachers.slice(1).some(r => norm(r[0]) === p.id && norm(r[3]) === 'YA')) throw new Error('Akun guru tidak aktif.');
+            const teacher = teachers.slice(1).find(r => norm(r[0]) === p.id && norm(r[3]) === 'YA');
+            if (!teacher) throw new Error('Akun guru tidak aktif.');
+            if (p.tv !== teacherSessionVersion(p.id, teacher[2])) throw new Error('Sesi guru sudah berakhir. Silakan login kembali dengan password terbaru.');
           }
         }
         return fn(body, req);

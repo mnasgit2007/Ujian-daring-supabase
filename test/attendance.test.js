@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import QRCode from 'qrcode';
 import jsQR from 'jsqr';
 
-process.env.HASH_SECRET = 'attendance-test-hash-secret';
-process.env.SESSION_SECRET = 'attendance-test-session-secret';
+process.env.APP_HASH_SECRET = 'attendance-test-hash-secret';
+process.env.APP_SESSION_SECRET = 'attendance-test-session-secret';
 
 const { attendancePayload, attendanceTokenFromPayload, normalizeAttendanceSessionInput } =
   await import('../api/_lib/exam.js');

@@ -49,14 +49,16 @@
     try {
       const result=await api('dashboard');
       if(id!==generation||S.token!==token||role!==requestRole)return;
-      data=result;homeSummary();if(current[role]!=='home')render();window.PortalUI?.refresh(data,role);
+      data=result;syncTeacherNav();homeSummary();if(current[role]!=='home')render();window.PortalUI?.refresh(data,role);return true;
     } catch(e) {
       if(S.token!==token||role!==requestRole)return;
       if(current[role]!=='home'){panel().replaceChildren();notice(e.message,true);}
       else if(role==='S'){$('lpHomeSummary').hidden=false;$('lpHomeSummary').textContent=e.message;}
+      return false;
     } finally {loading=false;if(queuedRefresh){queuedRefresh=false;load();}}
   }
   function show(page) {
+    if(page==='teachers'&&(role!=='A'||!data?.canManageTeachers))return;
     window.PortalUI?.page(page);
     current[role]=page;notice('');
     if(role==='A')setAdminPage('learning');
@@ -67,7 +69,7 @@
     $('lpShell'+role).classList.toggle('hidden',page==='home');
     document.querySelectorAll('[data-lp-role="'+role+'"]').forEach(b=>{const active=b.dataset.lpPage===page;b.classList.toggle('active',active);b.setAttribute('aria-current',active?'page':'false');});
     if(role==='S')document.querySelector('.student-rail a.active')?.classList.remove('active');
-    $('lpTitle'+role).textContent=pages[page]||'Pembelajaran';
+    $('lpTitle'+role).textContent=page==='teachers'?'Kelola akun guru':pages[page]||'Pembelajaran';
     if(data)render();else {panel().textContent='Memuat data pembelajaran…';load();}
     window.scrollTo({top:0,behavior:'auto'});
   }
@@ -80,18 +82,70 @@
       $(role==='S'?'studentView':'adminView').append(shell);$('lpReload'+role).onclick=()=>{notice('');load();};
       const nav=role==='S'?document.querySelector('.student-rail nav'):$('adminNav');
       for(const [key,label] of Object.entries(pages)) {const b=document.createElement('button');b.type='button';b.textContent=label;b.dataset.lpPage=key;b.dataset.lpRole=role;b.onclick=()=>show(key);if(key==='dashboard')nav.prepend(b);else nav.append(b);}
+      if(role==='A') {
+        const button=document.createElement('button');button.id='lpTeachersNav';button.type='button';button.textContent='Tambah Guru';
+        button.dataset.lpPage='teachers';button.dataset.lpRole='A';button.hidden=true;button.onclick=()=>show('teachers');nav.append(button);
+      }
       if(role==='S') {
         const box=document.createElement('section');box.id='lpHomeSummary';box.className='card lp-home-summary';box.hidden=true;document.querySelector('#studentView .student-summary').after(box);
         document.querySelector('.student-rail a[href="#studentView"]')?.remove();
         document.querySelectorAll('.student-rail a').forEach(a=>a.addEventListener('click',()=>show('home')));
       }
     }
+    syncTeacherNav();
     if(changed)show('dashboard');
     else if(role==='A'&&S.adminPage==='learning')show(current.A==='home'?'dashboard':current.A);
     window.PortalUI?.decorate();
     if(!changed)load();
   }
-  function render() { if(!data)return;const p=current[role];if(p==='dashboard'||p==='schedule')window.PortalUI?.render(panel(),p,data,role);if(p==='attendance')renderAttendance();if(p==='materials')renderMaterials();if(p==='tasks')renderTasks();if(p==='profile'){renderProfile();window.PortalUI?.profile(panel(),data,role);} }
+  function render() { if(!data)return;const p=current[role];if(p==='dashboard'||p==='schedule')window.PortalUI?.render(panel(),p,data,role);if(p==='attendance')renderAttendance();if(p==='materials')renderMaterials();if(p==='tasks')renderTasks();if(p==='teachers')renderTeachers();if(p==='profile'){renderProfile();window.PortalUI?.profile(panel(),data,role);} }
+  function syncTeacherNav() {
+    if($('lpTeachersNav'))$('lpTeachersNav').hidden=!(role==='A'&&data?.canManageTeachers);
+  }
+  async function saveTeacher(button,action,message,form) {
+    const token=S.token;
+    button.disabled=true;if(form)form.querySelector('fieldset').disabled=true;notice('Menyimpan…');
+    try {
+      await action();
+      if(S.token!==token)return;
+      form?.reset();$('lpTeacherEditor')?.replaceChildren();
+      const refreshed=await load();
+      if(S.token===token)notice(message+(refreshed?'':' Klik Muat ulang untuk memperbarui daftar.'));
+    } catch(e) {if(S.token===token)notice(e.message,true);}
+    finally {button.disabled=false;if(form?.isConnected)form.querySelector('fieldset').disabled=false;}
+  }
+  function renderTeachers() {
+    if(role!=='A'||!data.canManageTeachers){panel().innerHTML=empty('Pengelolaan akun guru hanya tersedia untuk admin utama.');return;}
+    const teachers=data.teachers||[],active=teachers.filter(t=>t.active).length;
+    panel().innerHTML=`<div class="lp-teacher-intro"><div><span class="eyebrow">AKSES MENGAJAR</span><h3>Kelola tim guru</h3><p>Buat akun, atur password, dan kelola akses guru dari satu tempat.</p></div><button type="button" id="lpAddTeacher">+ Tambah Guru</button></div><div class="lp-stats lp-teacher-stats"><div><small>Total guru</small><strong>${teachers.length}</strong></div><div><small>Aktif</small><strong>${active}</strong></div><div><small>Nonaktif</small><strong>${teachers.length-active}</strong></div></div><p class="lp-notice">Guru login melalui <strong>Guru / Admin</strong> dengan <strong>ID Guru + password</strong>. Akun guru dapat mengelola pembelajaran seperti sebelumnya; hanya admin utama yang dapat mengelola akun guru.</p><div id="lpTeacherEditor"></div><div class="lp-filters"><label>Cari guru<input id="lpTeacherSearch" type="search" placeholder="Nama atau ID Guru"></label><label>Status akun<select id="lpTeacherFilter"><option value="">Semua status</option><option value="active">Aktif</option><option value="inactive">Nonaktif</option></select></label></div><div id="lpTeacherList" class="lp-list" aria-live="polite"></div>`;
+    const draw=()=>{
+      const q=$('lpTeacherSearch').value.trim().toLowerCase(),status=$('lpTeacherFilter').value;
+      const found=teachers.filter(t=>(!q||(t.name+' '+t.id).toLowerCase().includes(q))&&(!status||t.active===(status==='active')));
+      $('lpTeacherList').innerHTML=found.length?found.map((t,i)=>`<article class="lp-item lp-teacher-card"><div class="lp-teacher-identity"><span class="lp-avatar" aria-hidden="true">${esc(t.name.slice(0,2).toUpperCase())}</span><div><h3>${esc(t.name)}</h3><p>ID Guru: <strong>${esc(t.id)}</strong></p><span class="lp-badge ${t.active?'lp-HADIR':'lp-ALPA'}">${t.active?'Aktif':'Nonaktif'}</span></div></div><div class="lp-teacher-actions"><button type="button" class="secondary" data-teacher-password="${i}" aria-label="Atur password ${esc(t.name)}">Atur password</button><button type="button" class="secondary" data-teacher-status="${i}" aria-label="${t.active?'Nonaktifkan':'Aktifkan'} ${esc(t.name)}">${t.active?'Nonaktifkan':'Aktifkan'}</button></div></article>`).join(''):empty(teachers.length?'Tidak ada guru sesuai pencarian.':'Belum ada akun guru. Klik Tambah Guru untuk membuat akun pertama.');
+      $('lpTeacherList').querySelectorAll('[data-teacher-password]').forEach(b=>b.onclick=()=>teacherForm(found[Number(b.dataset.teacherPassword)]));
+      $('lpTeacherList').querySelectorAll('[data-teacher-status]').forEach(b=>b.onclick=()=>{
+        const t=found[Number(b.dataset.teacherStatus)],next=!t.active;
+        if(!confirm(`${next?'Aktifkan':'Nonaktifkan'} akun ${t.name} (${t.id})? ${next?'Guru dapat login kembali.':'Guru tidak dapat login atau melanjutkan akses. Data pembelajaran tetap tersimpan.'}`))return;
+        saveTeacher(b,()=>api('setTeacherStatus',{id:t.id,active:next}),`Akun ${t.name} berhasil ${next?'diaktifkan':'dinonaktifkan'}.`);
+      });
+    };
+    $('lpTeacherSearch').oninput=draw;$('lpTeacherFilter').onchange=draw;$('lpAddTeacher').onclick=()=>teacherForm();draw();
+  }
+  function teacherForm(teacher) {
+    const reset=Boolean(teacher),editor=$('lpTeacherEditor');notice('');
+    editor.innerHTML=`<form id="lpTeacherForm" class="lp-form"><h3>${reset?'Atur password guru':'Tambah Guru'}</h3>${reset?`<p>${esc(teacher.name)} · <strong>${esc(teacher.id)}</strong></p>`:''}<fieldset class="lp-teacher-fields"><div class="lp-form-grid">${reset?'':`<label>ID Guru<input name="id" required pattern="(?:[A-Za-z0-9._]|-){2,40}" minlength="2" maxlength="40" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Contoh: GURU-DKV-01"><small>2–40 karakter, tanpa spasi. ID digunakan saat login.</small></label><label>Nama guru<input name="name" required maxlength="120" autocomplete="off" placeholder="Nama lengkap guru"></label>`}<label>${reset?'Password baru':'Password awal'}<input name="password" type="password" minlength="10" maxlength="80" required autocomplete="new-password"></label><label>Ulangi password<input name="confirmPassword" type="password" minlength="10" maxlength="80" required autocomplete="new-password"></label></div><label class="lp-checkbox"><input id="lpShowTeacherPassword" type="checkbox">Tampilkan password</label><p class="muted">Minimal 10 karakter. Bagikan ID dan password secara pribadi.${reset?' Password lama tidak ditampilkan; setelah diganti guru perlu login kembali.':' Akun baru langsung aktif.'}</p><div class="lp-teacher-actions"><button type="submit">${reset?'Simpan password':'Buat akun guru'}</button><button type="button" class="secondary" id="lpCancelTeacher">Batal</button></div></fieldset></form>`;
+    const form=$('lpTeacherForm');
+    $('lpCancelTeacher').onclick=()=>{form.reset();editor.replaceChildren();$('lpAddTeacher').focus();};
+    $('lpShowTeacherPassword').onchange=e=>{for(const name of ['password','confirmPassword'])form.elements[name].type=e.target.checked?'text':'password';};
+    form.onsubmit=e=>{
+      e.preventDefault();const values=formValues(form);
+      if(values.password!==values.confirmPassword){notice('Kedua password harus sama.',true);form.elements.confirmPassword.focus();return;}
+      if(values.password!==values.password.trim()){notice('Password tidak boleh diawali atau diakhiri spasi.',true);return;}
+      const input=reset?{id:teacher.id,password:values.password}:{id:values.id,name:values.name,password:values.password};
+      saveTeacher(form.querySelector('[type=submit]'),()=>api(reset?'setTeacherPassword':'createTeacher',input),reset?'Password guru diperbarui. Guru perlu login kembali.':'Akun guru berhasil dibuat. Bagikan ID dan password secara pribadi.',form);
+    };
+    editor.scrollIntoView({block:'start',behavior:'smooth'});form.querySelector('input').focus();
+  }
   function renderAttendance() {
     const admin=role==='A';
     panel().innerHTML=`<p class="muted">${admin?'Koreksi status dan tulis alasan untuk setiap siswa. Sesi baru menyimpan daftar peserta saat dibuka.':'Riwayat kehadiranmu per pertemuan, termasuk catatan dari guru.'}</p><div class="lp-filters">${admin?`<label>Kelas<select id="lpAttClass"><option value="">Semua kelas</option>${options(data.classes.map(c=>[c.id,c.name]))}</select></label><label>Sesi<select id="lpAttSession"><option value="">Semua sesi</option>${options(data.sessions.map(s=>[s.id,s.title+' · '+date(s.dateMs)]))}</select></label>`:''}<label>Dari tanggal (WITA)<input type="date" id="lpAttFrom"></label><label>Sampai tanggal<input type="date" id="lpAttTo"></label><label>Status<select id="lpAttStatus"><option value="">Semua status</option>${options(Object.entries(labels))}</select></label>${admin?'<label>Cari nama / ID<input id="lpAttSearch" type="search"></label>':''}</div><div id="lpAttTotals"></div><div id="lpAttList" class="lp-list"></div>`;
@@ -174,10 +228,9 @@
   }
   function renderProfile() {
     const p=data.profile;
-    panel().innerHTML=`<div class="lp-profile-head"><span class="lp-avatar">${esc(p.name.slice(0,2).toUpperCase())}</span><div><h3>${esc(p.name)}</h3><p>${esc(p.id)} · ${role==='S'?esc(p.className+' · Kelompok '+p.group):'Guru / Admin'}</p><small>Nama pada data sekolah: ${esc(p.officialName)}</small></div></div><form id="lpProfileForm" class="lp-form"><div class="lp-form-grid"><label>Nama tampilan<input name="name" required maxlength="120" value="${esc(p.name)}"></label><label>Email<input name="email" type="email" maxlength="150" value="${esc(p.email)}"></label><label>Nomor kontak<input name="phone" type="tel" maxlength="40" value="${esc(p.phone)}"></label>${role==='A'?`<label>Mata pelajaran<input name="subject" maxlength="150" value="${esc(p.subject)}"></label>`:''}<label class="lp-wide">Tentang saya<textarea name="bio" maxlength="800">${esc(p.bio)}</textarea></label></div><p class="muted">Data kontak ini hanya tampil pada profil akun sendiri. ID, kelas, kelompok, dan nama sekolah dikelola oleh admin.</p><button type="submit">Simpan profil</button></form>${data.canManageTeachers?`<details class="lp-form"><summary>Akun guru terpisah</summary><p>Setiap guru memiliki profil sendiri. Akun guru memiliki akses pengelolaan yang sama dengan panel admin; berikan hanya kepada guru yang berwenang.</p><form id="lpTeacherForm"><label>ID guru<input name="id" required pattern="[A-Za-z0-9._-]{2,40}" maxlength="40"></label><label>Nama guru<input name="name" required maxlength="120"></label><label>Kata sandi awal<input name="password" type="password" minlength="10" maxlength="80" required autocomplete="new-password"></label><button type="submit">Buat akun guru</button></form><div class="lp-list">${data.teachers.map(t=>`<p>${esc(t.name)} · ${esc(t.id)} · ${t.active?'Aktif':'Tidak aktif'}</p>`).join('')}</div></details>`:''}`;
+    panel().innerHTML=`<div class="lp-profile-head"><span class="lp-avatar">${esc(p.name.slice(0,2).toUpperCase())}</span><div><h3>${esc(p.name)}</h3><p>${esc(p.id)} · ${role==='S'?esc(p.className+' · Kelompok '+p.group):'Guru / Admin'}</p><small>Nama pada data sekolah: ${esc(p.officialName)}</small></div></div><form id="lpProfileForm" class="lp-form"><div class="lp-form-grid"><label>Nama tampilan<input name="name" required maxlength="120" value="${esc(p.name)}"></label><label>Email<input name="email" type="email" maxlength="150" value="${esc(p.email)}"></label><label>Nomor kontak<input name="phone" type="tel" maxlength="40" value="${esc(p.phone)}"></label>${role==='A'?`<label>Mata pelajaran<input name="subject" maxlength="150" value="${esc(p.subject)}"></label>`:''}<label class="lp-wide">Tentang saya<textarea name="bio" maxlength="800">${esc(p.bio)}</textarea></label></div><p class="muted">Data kontak ini hanya tampil pada profil akun sendiri. ID, kelas, kelompok, dan nama sekolah dikelola oleh admin.</p><button type="submit">Simpan profil</button></form>`;
     $('lpProfileForm').onsubmit=ev=>{ev.preventDefault();const f=ev.currentTarget;run(f.querySelector('button'),()=>api('saveProfile',formValues(f)),'Profil diperbarui.');};
-    if($('lpTeacherForm'))$('lpTeacherForm').onsubmit=ev=>{ev.preventDefault();const f=ev.currentTarget;if(!confirm('Buat akun guru dengan akses pengelolaan admin?'))return;run(f.querySelector('button'),()=>api('createTeacher',formValues(f)),'Akun guru dibuat. Bagikan ID dan kata sandi secara pribadi.');};
   }
-  document.querySelector('#loginForm').insertAdjacentHTML('afterbegin','<div id="teacherLoginFields" class="hidden"><label class="field" for="teacherLoginId">ID guru (opsional)</label><input id="teacherLoginId" type="text" maxlength="40" autocomplete="username" placeholder="Kosongkan untuk admin utama"></div>');
-  window.LearningUI={ mount, show, reload:load, syncAdmin(page){if(page==='learning')document.querySelector('#adminView .admin-heading h1').textContent='Ruang pembelajaran';if($('lpShellA'))$('lpShellA').classList.toggle('hidden',page!=='learning');if(page!=='learning'){current.A='home';document.querySelectorAll('[data-lp-role="A"]').forEach(b=>b.classList.remove('active'));}}, loginRole(r){$('teacherLoginFields').classList.toggle('hidden',r!=='A');}, reset(){window.PortalUI?.reset();generation++;data=null;current={S:'home',A:'home'};mount.token='';if($('lpHomeSummary')){$('lpHomeSummary').replaceChildren();$('lpHomeSummary').hidden=true;}document.querySelectorAll('.lp-shell').forEach(n=>n.classList.add('hidden'));document.querySelectorAll('[id^=lpPanel]').forEach(n=>n.replaceChildren());} };
+  document.querySelector('#loginForm').insertAdjacentHTML('afterbegin','<div id="teacherLoginFields" class="hidden"><label class="field" for="teacherLoginId">ID Guru</label><input id="teacherLoginId" type="text" maxlength="40" autocomplete="username" placeholder="Contoh: GURU-DKV-01" aria-describedby="teacherLoginHelp"><p id="teacherLoginHelp" class="muted">Guru: isi ID Guru dan password. Admin utama: kosongkan ID Guru.</p></div>');
+  window.LearningUI={ mount, show, reload:load, syncAdmin(page){if(page==='learning')document.querySelector('#adminView .admin-heading h1').textContent='Ruang pembelajaran';if($('lpShellA'))$('lpShellA').classList.toggle('hidden',page!=='learning');if(page!=='learning'){current.A='home';document.querySelectorAll('[data-lp-role="A"]').forEach(b=>b.classList.remove('active'));}}, loginRole(r){$('teacherLoginFields').classList.toggle('hidden',r!=='A');}, reset(){if($('lpTeachersNav'))$('lpTeachersNav').hidden=true;window.PortalUI?.reset();generation++;data=null;current={S:'home',A:'home'};mount.token='';if($('lpHomeSummary')){$('lpHomeSummary').replaceChildren();$('lpHomeSummary').hidden=true;}document.querySelectorAll('.lp-shell').forEach(n=>n.classList.add('hidden'));document.querySelectorAll('[id^=lpPanel]').forEach(n=>n.replaceChildren());} };
 })();

@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-process.env.HASH_SECRET = 'student-admin-test-hash-secret';
-process.env.SESSION_SECRET = 'student-admin-test-session-secret';
+process.env.APP_HASH_SECRET = 'student-admin-test-hash-secret';
+process.env.APP_SESSION_SECRET = 'student-admin-test-session-secret';
 
 const { normalizeStudentInput, attendancePayload } = await import('../api/_lib/exam.js');
 

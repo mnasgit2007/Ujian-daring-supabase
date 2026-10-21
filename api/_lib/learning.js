@@ -16,6 +16,18 @@ function text(value, max, required = false) {
   return s;
 }
 function admin(p) { if (p.role !== 'A') throw new Error('Hanya guru/admin yang dapat melakukan tindakan ini.'); }
+function principalAdmin(p) {
+  if (p.role !== 'A' || p.id) {
+    const error = new Error('Hanya admin utama dapat mengelola akun guru.');
+    error.status = 403;
+    throw error;
+  }
+}
+function teacherPassword(value) {
+  const password = text(value,80,true);
+  if (password.length < 10) throw new Error('Password guru minimal 10 dan maksimal 80 karakter.');
+  return password;
+}
 export function safeLink(value) {
   const s = text(value, 1500);
   if (!s) return '';
@@ -71,7 +83,7 @@ export function createLearningService(db = store, files = assignmentFiles) {
   const table = async s => rowsOnly(await read(s));
   async function setup() {
     try { await db.preload(NEW_SHEETS); }
-    catch (e) { if (String(e.message).includes('range') || [400,404].includes(Number(e.code || e.status))) throw new Error('Fitur pembelajaran belum diaktifkan. Admin perlu menjalankan node --env-file=.env scripts/setup-sheet.mjs.'); throw e; }
+    catch (e) { if (String(e.message).includes('range') || [400,404].includes(Number(e.code || e.status))) throw new Error('Konfigurasi database pembelajaran belum lengkap.'); throw e; }
   }
   async function principal(p) {
     if (!['S','A'].includes(p.role)) throw new Error('Akses ditolak.');
@@ -144,15 +156,35 @@ export function createLearningService(db = store, files = assignmentFiles) {
     return {ok:true};
   }
   async function createTeacher(p,input) {
-    admin(p);if(p.id)throw new Error('Hanya admin utama dapat membuat akun guru.');await setup();
-    const id=text(input.id,40,true),name=text(input.name,120,true),password=text(input.password,80,true);
-    if(!/^[A-Za-z0-9._-]{2,40}$/.test(id)||id==='ADMIN'||password.length<10)throw new Error('ID guru 2–40 karakter dan kata sandi minimal 10 karakter.');
-    if((await table('GURU')).some(r=>r[0]===id))throw new Error('ID guru sudah digunakan.');
+    principalAdmin(p);await setup();
+    const id=text(input.id,40,true),name=text(input.name,120,true),password=teacherPassword(input.password);
+    if(!/^[A-Za-z0-9._-]{2,40}$/.test(id)||id.toUpperCase()==='ADMIN')throw new Error('ID guru 2–40 karakter, tanpa spasi, dan tidak boleh ADMIN.');
+    if((await table('GURU')).some(r=>norm(r[0]).toLowerCase()===id.toLowerCase()))throw new Error('ID guru sudah digunakan.');
     await db.appendRows('GURU',[[id,name,hash('GURU:'+id+':'+password),'YA']]);return {ok:true};
+  }
+  async function teacherRow(input) {
+    const id=text(input.id,40,true);
+    const rows=await read('GURU');
+    const index=rows.findIndex((row,i)=>i>0&&norm(row[0])===id);
+    if(index<1)throw new Error('Akun guru tidak ditemukan.');
+    return {id,row:index+1};
+  }
+  async function setTeacherPassword(p,input) {
+    principalAdmin(p);
+    const password=teacherPassword(input.password),teacher=await teacherRow(input);
+    await db.writeCells('GURU',`C${teacher.row}`,[[hash('GURU:'+teacher.id+':'+password)]]);
+    return {ok:true};
+  }
+  async function setTeacherStatus(p,input) {
+    principalAdmin(p);
+    if(typeof input.active!=='boolean')throw new Error('Status akun guru tidak valid.');
+    const teacher=await teacherRow(input);
+    await db.writeCells('GURU',`D${teacher.row}`,[[input.active?'YA':'TIDAK']]);
+    return {ok:true};
   }
   async function savePhoto(p,input) {
     await setup();await principal(p);
-    if(!await optionalAcademicRows(db,'FOTO_PROFIL'))throw new Error('Jalankan setup-sheet.mjs untuk mengaktifkan foto profil.');
+    if(!await optionalAcademicRows(db,'FOTO_PROFIL'))throw new Error('Konfigurasi database foto profil belum lengkap.');
     const photo=String(input.photo||'');
     if(photo) {
       if(!/^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/.test(photo)||photo.length>32000)throw new Error('Foto harus JPEG, maksimal 24 KB.');
@@ -177,9 +209,9 @@ export function createLearningService(db = store, files = assignmentFiles) {
       for(const file of validated)uploaded.push(await files.put(file,id));
     } catch(e) {
       await Promise.allSettled(uploaded.map(f=>files.remove(f.id)));
-      throw new Error('Unggahan belum berhasil. Periksa akses Drive atau coba lagi.');
+      throw new Error('Unggahan belum berhasil. Periksa akses penyimpanan atau coba lagi.');
     }
-    // Keep uploads if the Sheets response is uncertain: never delete files which may already be referenced.
+    // Keep uploads if the database response is uncertain: files may already be referenced.
     await db.appendRows('PENGUMPULAN',[[id,task.id,p.id,student[1],note,JSON.stringify(uploaded),now,now>task.due?'YA':'TIDAK','','','','',requestId]]);
     return {ok:true,id};
   }
@@ -198,7 +230,7 @@ export function createLearningService(db = store, files = assignmentFiles) {
     if(!file)throw new Error('Berkas tidak ditemukan atau akses ditolak.');
     return files.get(file);
   }
-  return { dashboard, saveContent, markAttendance, saveProfile, savePhoto, createTeacher, submit, grade, download, async checkStorage(p){admin(p);await principal(p);return files.checkFolder();} };
+  return { dashboard, saveContent, markAttendance, saveProfile, savePhoto, createTeacher, setTeacherPassword, setTeacherStatus, submit, grade, download, async checkStorage(p){admin(p);await principal(p);return files.checkFolder();} };
 }
 
 export const learning = createLearningService();

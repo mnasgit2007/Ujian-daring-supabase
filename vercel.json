@@ -1,4 +1,7 @@
 {
+  "framework": null,
+  "outputDirectory": "public",
+  "buildCommand": "",
   "functions": {
     "api/*.js": {
       "maxDuration": 30

@@ -1,5 +1,7 @@
 # Aktivasi dashboard, peserta ujian, kalender, dan jadwal mengajar
 
+> ARSIP VERSI GOOGLE. Jangan menjalankan langkah di bawah untuk branch Supabase. Gunakan [panduan Supabase + Vercel](AKTIVASI_SUPABASE_VERCEL.md); panduan lama disimpan hanya sebagai riwayat.
+
 Pembaruan ini berada pada branch `feature/learning-dashboard-schedules`. Gunakan Spreadsheet salinan dan Vercel Preview untuk pemeriksaan terlebih dahulu. Mengirim branch/PR belum berarti perubahan sudah masuk ke Production.
 
 ## 1. Siapkan kode pada komputer

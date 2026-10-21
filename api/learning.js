@@ -18,6 +18,8 @@ export default handler(async body => {
     case 'saveProfile': return learning.saveProfile(p,body);
     case 'savePhoto': return learning.savePhoto(p,body);
     case 'createTeacher': return learning.createTeacher(p,body);
+    case 'setTeacherPassword': return learning.setTeacherPassword(p,body);
+    case 'setTeacherStatus': return learning.setTeacherStatus(p,body);
     case 'submit': return learning.submit(p,body);
     case 'grade': return learning.grade(p,body);
     case 'download': return learning.download(p,body);
